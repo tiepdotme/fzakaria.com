@@ -1,0 +1,1179 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://fzakaria.com/feed.xml" rel="self" type="application/atom+xml" /><link href="https://fzakaria.com/" rel="alternate" type="text/html" /><updated>2020-09-17T16:42:59-07:00</updated><id>https://fzakaria.com/feed.xml</id><title type="html">Farid Zakaria’s Blog</title><subtitle>I'm a software engineer, father and wishful amateur surfer. If you've come seeking my political views; you've found the wrong &lt;a href=&quot;https://fareedzakaria.com/&quot;&gt;Fareed&lt;/a&gt;.</subtitle><entry><title type="html">Tailscale is magic; even more so with NixOS</title><link href="https://fzakaria.com/2020/09/17/tailscale-is-magic-even-more-so-with-nixos.html" rel="alternate" type="text/html" title="Tailscale is magic; even more so with NixOS" /><published>2020-09-17T16:01:00-07:00</published><updated>2020-09-17T16:01:00-07:00</updated><id>https://fzakaria.com/2020/09/17/tailscale-is-magic-even-more-so-with-nixos</id><content type="html" xml:base="https://fzakaria.com/2020/09/17/tailscale-is-magic-even-more-so-with-nixos.html">&lt;p&gt;Our adventure into NixOS continues; this time let’s look into how we can &lt;strong&gt;harden&lt;/strong&gt; our NixOS machines by putting them within a VPN. We will be using &lt;a href=&quot;https://tailscale.com/&quot;&gt;tailscale&lt;/a&gt; to setup our VPN.&lt;/p&gt;
+
+&lt;p&gt;Restricting your machines; especially SSH for servers; behind a VPN is a great way to add a layer of security without having to mess with various checklists like making sure &lt;em&gt;password based logins&lt;/em&gt; are disabled.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;First off, &lt;a href=&quot;https://tailscale.com/&quot;&gt;tailscale&lt;/a&gt; delivers on it’s promise of &lt;em&gt;“VPN made easy”&lt;/em&gt;; it’s &lt;strong&gt;magic&lt;/strong&gt;. Few often do I get to use a product that delivers on the ease of use so wonderfully that it comes off as magic. It has turned the act of setting up a VPN into a &lt;em&gt;brain dead&lt;/em&gt; process; made even easier when coupled with NixOS.&lt;/p&gt;
+
+&lt;p&gt;For the purpose of following along; we will be using my NixOS AWS EC2 machine.
+It had a SecurityGroup with &lt;strong&gt;SSH 22&lt;/strong&gt; open previously so that I could access it.&lt;/p&gt;
+
+&lt;p&gt;Simply create a new module &lt;strong&gt;vpn.nix&lt;/strong&gt; with the following contents and perform a &lt;code class=&quot;highlighter-rouge&quot;&gt;nixos-rebuild switch&lt;/code&gt;&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# enable the tailscale daemon; this will do a variety of tasks:&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# 1. create the TUN network device&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# 2. setup some IP routes to route through the TUN&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;services&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;tailscale&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;enable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# Let's open the UDP port with which the network is tunneled through&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;networking&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;firewall&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;allowedUDPPorts&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;41641&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# Disable SSH access through the firewall&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# Only way into the machine will be through&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# This may cause a chicken &amp;amp; egg problem since you need to register a machine&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# first using `tailscale up`&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# Better to rely on EC2 SecurityGroups&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# services.openssh.openFirewall = false;&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# Let's make the tailscale binary available to all users&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;environment&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;systemPackages&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;tailscale&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Specifically for EC2, I had to also add &lt;strong&gt;41641&lt;/strong&gt; as an ingress rule to my SecurityGroup.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;After the rebuild, let’s register the machine. Let’s now register the machine &amp;amp; connect to the VPN network.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;sudo &lt;/span&gt;tailscale up
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The above will provide a HTTPS link for you to login through your registered identity provider (i.e. Google); and register the machine.&lt;/p&gt;
+
+&lt;p&gt;After running this, you checkout the changes that were done.&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Confirm that &lt;em&gt;tailscaled&lt;/em&gt; is running properly
+    &lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; ❯ systemctl is-active tailscaled
+ active
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;    &lt;/div&gt;
+  &lt;/li&gt;
+  &lt;li&gt;Checkout the new network device created.
+    &lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; ❯ ip &lt;span class=&quot;nb&quot;&gt;link &lt;/span&gt;show dev tailscale0
+ 6: tailscale0: &amp;lt;POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP&amp;gt; mtu 1280 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default qlen 500
+ &lt;span class=&quot;nb&quot;&gt;link&lt;/span&gt;/none
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;    &lt;/div&gt;
+    &lt;blockquote&gt;
+      &lt;p&gt;Interestingly, the MTU is set to 1280 which is very conservative for the necessary encapsulation headers to tunnel traffic. &lt;a href=&quot;https://github.com/tailscale/tailscale/issues/246&quot;&gt;#246&lt;/a&gt;&lt;/p&gt;
+    &lt;/blockquote&gt;
+  &lt;/li&gt;
+  &lt;li&gt;Checkout the route table created
+    &lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; ❯ ip route show table 52
+ 100.87.7.89 dev tailscale0 scope &lt;span class=&quot;nb&quot;&gt;link
+ &lt;/span&gt;100.100.100.100 dev tailscale0 scope &lt;span class=&quot;nb&quot;&gt;link
+ &lt;/span&gt;100.101.102.103 dev tailscale0 scope &lt;span class=&quot;nb&quot;&gt;link&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;    &lt;/div&gt;
+
+    &lt;p&gt;&lt;code class=&quot;highlighter-rouge&quot;&gt;100.100.100.100&lt;/code&gt; is the DNS server you can use.&lt;/p&gt;
+
+    &lt;p&gt;&lt;code class=&quot;highlighter-rouge&quot;&gt;100.101.102.103&lt;/code&gt; is the default IRC server they make available when you create an account.&lt;/p&gt;
+
+    &lt;p&gt;&lt;code class=&quot;highlighter-rouge&quot;&gt;100.87.7.89&lt;/code&gt; is another machine in my VPN.&lt;/p&gt;
+  &lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Now remove the ability to SSH through the default network interface. If you have access to the server directly, go ahead and uncomment the line above.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;services.openssh.openFirewall = false;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;If you are on a cloud provider (i.e. AWS), simply remove the SSH ingress rule.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Unfortunately, I could not think through a way to disable the firewall for a clouded server. On a fresh NixOS rebuild, tailscale will not have been registered but it will disable SSH. Have an idea ? Reach out to &lt;a href=&quot;mailto:farid.m.zakaria@gmail.com&quot;&gt;me&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;strong&gt;Wow!&lt;/strong&gt; That’s it, we’re done! We’ve setup a full VPN between any machines with the help of tailscale.&lt;/p&gt;
+
+&lt;p&gt;Now the strength of our SSH is directly related to our identity provider. For instance, I’ve setup MFA for my Google account.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;tailscale&lt;/em&gt; &amp;amp; &lt;em&gt;NixOS&lt;/em&gt; are a great match.&lt;/p&gt;</content><author><name></name></author><summary type="html">Our adventure into NixOS continues; this time let’s look into how we can harden our NixOS machines by putting them within a VPN. We will be using tailscale to setup our VPN. Restricting your machines; especially SSH for servers; behind a VPN is a great way to add a layer of security without having to mess with various checklists like making sure password based logins are disabled.</summary></entry><entry><title type="html">NixOS; what’s in a rebuild? Continued.</title><link href="https://fzakaria.com/2020/09/08/nixos-what-s-in-a-rebuild-continued.html" rel="alternate" type="text/html" title="NixOS; what's in a rebuild? Continued." /><published>2020-09-08T16:17:00-07:00</published><updated>2020-09-08T16:17:00-07:00</updated><id>https://fzakaria.com/2020/09/08/nixos-what-s-in-a-rebuild-continued</id><content type="html" xml:base="https://fzakaria.com/2020/09/08/nixos-what-s-in-a-rebuild-continued.html">&lt;blockquote&gt;
+  &lt;p&gt;This is &lt;em&gt;part 2&lt;/em&gt; of a series on &lt;strong&gt;nixos-rebuild&lt;/strong&gt;. You can read part 1 &lt;a href=&quot;/2020/09/06/nixos-what-s-in-a-rebuild.html&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;We previously broke down that one of the first tasks done by &lt;em&gt;nixos-rebuild&lt;/em&gt; is to build the &lt;em&gt;system&lt;/em&gt; attribute.&lt;/p&gt;
+
+&lt;p&gt;What happens next for &lt;strong&gt;switch&lt;/strong&gt; ? Let’s go back to the &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/02590c96209d374d7f720293fcb8337e17104bc9/nixos/modules/installer/tools/nixos-rebuild.sh#L428-L429&quot;&gt;source&lt;/a&gt;.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;...
+copyToTarget &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$pathToConfig&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+targetHostCmd nix-env &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$profile&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--set&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$pathToConfig&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;It will attempt to copy the &lt;em&gt;system&lt;/em&gt; &lt;em&gt;/nix/store&lt;/em&gt; path if a target host is set &amp;amp; also change the profile (&lt;em&gt;/nix/var/nix/profiles/system&lt;/em&gt;) to the new &lt;em&gt;system&lt;/em&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;❯ tree /nix/var/nix/profiles/
+/nix/var/nix/profiles/
+...
+├── system -&amp;gt; system-18-link
+...
+├── system-8-link -&amp;gt; /nix/store/3n0563wd5c0jxppaaj2y4nlw2ybvikl3-nixos-system-unnamed-20.03post-git
+└── system-9-link -&amp;gt; /nix/store/9y3gp7llvinvra8qcx9n52s0kpvvyzh8-nixos-system-unnamed-20.03post-git
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Finally the &lt;em&gt;system&lt;/em&gt; is activated; by calling the generated &lt;em&gt;switch-to-configuration&lt;/em&gt; script created within the system store entry.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;...
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;!&lt;/span&gt; targetHostCmd &lt;span class=&quot;nv&quot;&gt;$pathToConfig&lt;/span&gt;/bin/switch-to-configuration &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$action&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;❯ tree /nix/store/rpfin018i0s2bdvmsikkrdvd0wvwg287-nixos-system-altaria-20.03post-git/bin
+/nix/store/rpfin018i0s2bdvmsikkrdvd0wvwg287-nixos-system-altaria-20.03post-git/bin
+└── switch-to-configuration
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;These &lt;strong&gt;4&lt;/strong&gt; tasks; are the basic steps that &lt;em&gt;nixos-rebuild&lt;/em&gt; will perform.&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Build the &lt;em&gt;system&lt;/em&gt; attribute&lt;/li&gt;
+  &lt;li&gt;Copy the &lt;em&gt;/nix/store&lt;/em&gt; transitive closure&lt;/li&gt;
+  &lt;li&gt;Set the &lt;em&gt;/nix/var/nix/profiles/system&lt;/em&gt; to the new version&lt;/li&gt;
+  &lt;li&gt;Run the &lt;em&gt;switch-to-configuration&lt;/em&gt; script&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Many&lt;sup id=&quot;fnref:1&quot; role=&quot;doc-noteref&quot;&gt;&lt;a href=&quot;#fn:1&quot; class=&quot;footnote&quot;&gt;1&lt;/a&gt;&lt;/sup&gt; &lt;sup id=&quot;fnref:2&quot; role=&quot;doc-noteref&quot;&gt;&lt;a href=&quot;#fn:2&quot; class=&quot;footnote&quot;&gt;2&lt;/a&gt;&lt;/sup&gt; &lt;sup id=&quot;fnref:3&quot; role=&quot;doc-noteref&quot;&gt;&lt;a href=&quot;#fn:3&quot; class=&quot;footnote&quot;&gt;3&lt;/a&gt;&lt;/sup&gt; have already written about these simple steps; simple scripts can be found on GitHub or even simple wrappers such as &lt;a href=&quot;https://github.com/misuzu/nix-simple-deploy&quot;&gt;nix-simple-deploy&lt;/a&gt;; however &lt;em&gt;nixos-rebuild&lt;/em&gt; natively supports remote machines.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nixos-rebuild switch &lt;span class=&quot;nt&quot;&gt;--target-host&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$REMOTE_HOST&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Is there a need for these small wrappers given that &lt;em&gt;nixos-rebuild&lt;/em&gt; can do it?&lt;/p&gt;
+
+&lt;p&gt;There is a simplicity to running the minimal number of commands needed for your workflow; avoiding &lt;em&gt;nixos-rebuild.sh&lt;/em&gt; which is ~500 LOC.&lt;/p&gt;
+
+&lt;h3 id=&quot;linux--nixos&quot;&gt;Linux 🎮 NixOS&lt;/h3&gt;
+
+&lt;p&gt;I admitted earlier that I have just recently finally started running NixOS after having run Nix on my Debian system for a while now.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;I am only running NixOS on my personal server and not my laptop&lt;/em&gt;; which continues to be Debian. The non-NixOS Nix distribution does not come with &lt;em&gt;nixos-rebuild&lt;/em&gt;;&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;I use my laptop primarily for my work which does not support NixOS.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;I would like to however continue hacking on my laptop; building NixOS VMs or running &lt;em&gt;nixos-rebuild&lt;/em&gt; with &lt;code class=&quot;highlighter-rouge&quot;&gt;--target-host&lt;/code&gt; set to my server. Can this be achieved?&lt;/p&gt;
+
+&lt;p&gt;With the help of &lt;a href=&quot;https://github.com/Infinisil&quot;&gt;Infinisil&lt;/a&gt;; he helped demonstrate how I can easily install not only &lt;em&gt;nixos-rebuild&lt;/em&gt;; but even the manpages.&lt;/p&gt;
+
+&lt;p&gt;Here is an example of adding the two if you are using &lt;a href=&quot;https://github.com/rycee/home-manager&quot;&gt;home-manager&lt;/a&gt;.&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;home&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;packages&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# I want the NixOS manpages even when not on nixos&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;sx&quot;&gt;nixpkgs/nixos&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;configuration&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;})&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;system&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;build&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;manual&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;manpages&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# I want NixOS tooling even when not on NixOS&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixos&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;})&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixos-rebuild&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;&lt;em&gt;Bonus&lt;/em&gt;; the above actually includes all NixOS manpages including &lt;code class=&quot;highlighter-rouge&quot;&gt;configuration.nix&lt;/code&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Now I can continue to play around with NixOS even while on my Linux distribution! Hurray?&lt;/p&gt;
+
+&lt;p&gt;I would love to dig deeper or understand the &lt;em&gt;active&lt;/em&gt; &amp;amp; &lt;em&gt;init&lt;/em&gt; scripts within the &lt;em&gt;system&lt;/em&gt; target that take care of making NixOS bootable; if you have a good write-up please share!&lt;/p&gt;
+
+&lt;div class=&quot;footnotes&quot; role=&quot;doc-endnotes&quot;&gt;
+  &lt;ol&gt;
+    &lt;li id=&quot;fn:1&quot; role=&quot;doc-endnote&quot;&gt;
+      &lt;p&gt;&lt;a href=&quot;https://vaibhavsagar.com/blog/2019/08/22/industrial-strength-deployments/#fnref1&quot;&gt;https://vaibhavsagar.com/blog/2019/08/22/industrial-strength-deployments/#fnref1&lt;/a&gt; &lt;a href=&quot;#fnref:1&quot; class=&quot;reversefootnote&quot; role=&quot;doc-backlink&quot;&gt;&amp;#8617;&lt;/a&gt;&lt;/p&gt;
+    &lt;/li&gt;
+    &lt;li id=&quot;fn:2&quot; role=&quot;doc-endnote&quot;&gt;
+      &lt;p&gt;&lt;a href=&quot;https://ixmatus.net/articles/deploy-software-nix-deploy.html&quot;&gt;https://ixmatus.net/articles/deploy-software-nix-deploy.html&lt;/a&gt; &lt;a href=&quot;#fnref:2&quot; class=&quot;reversefootnote&quot; role=&quot;doc-backlink&quot;&gt;&amp;#8617;&lt;/a&gt;&lt;/p&gt;
+    &lt;/li&gt;
+    &lt;li id=&quot;fn:3&quot; role=&quot;doc-endnote&quot;&gt;
+      &lt;p&gt;&lt;a href=&quot;http://www.haskellforall.com/2018/08/nixos-in-production.html&quot;&gt;http://www.haskellforall.com/2018/08/nixos-in-production.html&lt;/a&gt; &lt;a href=&quot;#fnref:3&quot; class=&quot;reversefootnote&quot; role=&quot;doc-backlink&quot;&gt;&amp;#8617;&lt;/a&gt;&lt;/p&gt;
+    &lt;/li&gt;
+  &lt;/ol&gt;
+&lt;/div&gt;</content><author><name></name></author><summary type="html">This is part 2 of a series on nixos-rebuild. You can read part 1 here. We previously broke down that one of the first tasks done by nixos-rebuild is to build the system attribute. What happens next for switch ? Let’s go back to the source.</summary></entry><entry><title type="html">NixOS; what’s in a rebuild?</title><link href="https://fzakaria.com/2020/09/06/nixos-what-s-in-a-rebuild.html" rel="alternate" type="text/html" title="NixOS; what's in a rebuild?" /><published>2020-09-06T08:59:00-07:00</published><updated>2020-09-06T08:59:00-07:00</updated><id>https://fzakaria.com/2020/09/06/nixos-what-s-in-a-rebuild</id><content type="html" xml:base="https://fzakaria.com/2020/09/06/nixos-what-s-in-a-rebuild.html">&lt;p&gt;I have been using Nix but mainly through &lt;a href=&quot;https://github.com/rycee/home-manager&quot;&gt;home-manager&lt;/a&gt; on my Debian system; finally I made the plunge into running NixOS on an AWS server for my &lt;em&gt;side-projects&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;There’s a lot of information on how to configure &amp;amp; setup an already created NixOS machine but not much advice for workflows, best practices &amp;amp; multiple machines.&lt;/p&gt;
+
+&lt;p&gt;Here I’ll document what I found useful and pulling back the veil on some of the NixOS tooling.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Feel free to check my Nix repository for home-manager &amp;amp; NixOS
+&lt;a href=&quot;https://github.com/fzakaria/nix-home&quot;&gt;https://github.com/fzakaria/nix-home&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;!--more--&gt;
+
+&lt;h3 id=&quot;configurationnix&quot;&gt;configuration.nix&lt;/h3&gt;
+
+&lt;p&gt;NixOS documentation outlines that the entry-point to the NixOS setup is a file &lt;em&gt;configuration.nix&lt;/em&gt;; why?&lt;/p&gt;
+
+&lt;p&gt;Well, NixOS configuration is primarily driven by &lt;strong&gt;nixos-rebuild&lt;/strong&gt;; let’s take a look at the &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/02590c96209d374d7f720293fcb8337e17104bc9/nixos/modules/installer/tools/nixos-rebuild.sh#L419-L421&quot;&gt;source&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;One of the first things it does when running &lt;code class=&quot;highlighter-rouge&quot;&gt;switch&lt;/code&gt; is the following.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;...
+&lt;span class=&quot;nv&quot;&gt;pathToConfig&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nixBuild &lt;span class=&quot;s1&quot;&gt;'&amp;lt;nixpkgs/nixos&amp;gt;'&lt;/span&gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-A&lt;/span&gt; system &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;extraBuildFlags&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[@]&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Interesting so it’s building a &lt;em&gt;system&lt;/em&gt; &amp;amp; fetching the &lt;em&gt;/nix/store/&lt;/em&gt; path for it; what’s that?&lt;/p&gt;
+
+&lt;p&gt;You can find the &lt;em&gt;system&lt;/em&gt; attribute in &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/ce6bc4dbc7821bc271e6ae5d25b57075c4ce877f/nixos/default.nix#L33&quot;&gt;nixos/default.nix&lt;/a&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;configuration&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./lib/from-env.nix&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;NIXOS_CONFIG&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixos-config&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;system&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;builtins&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;currentSystem&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;system&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;eval&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;system&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;build&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;toplevel&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This is in fact the &lt;strong&gt;entry-point&lt;/strong&gt; for NixOS; and we can see here that the &lt;em&gt;configuration&lt;/em&gt; defaults to &lt;nixos-config&gt; if not given.&lt;/nixos-config&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;On NixOS &lt;em&gt;&amp;lt;nixos-config&amp;gt;&lt;/em&gt; is set in &lt;em&gt;NIX_PATH&lt;/em&gt; to &lt;code class=&quot;highlighter-rouge&quot;&gt;nixos-config=/etc/nixos/configuration.nix&lt;/code&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Let’s write the most basic &lt;em&gt;configuration.nix&lt;/em&gt;&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}:{&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# We need no bootloader, because we aren't booting yet&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;boot&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;loader&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;grub&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;enable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;fileSystems&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+     &lt;span class=&quot;s2&quot;&gt;&quot;/&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;label&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;nixos-root&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code class=&quot;highlighter-rouge&quot;&gt;$ nix-build -I nixos-config=./configuration.nix --no-out-link '&amp;lt;nixpkgs/nixos&amp;gt;' -A system&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;We can also inline and build the &lt;em&gt;system&lt;/em&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;nixos&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;sx&quot;&gt;nixpkgs/nixos&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;configuration&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;c&quot;&gt;# We need no bootloader, because we aren't booting yet&lt;/span&gt;
+      &lt;span class=&quot;nv&quot;&gt;boot&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;loader&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;grub&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;enable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+      &lt;span class=&quot;nv&quot;&gt;fileSystems&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+         &lt;span class=&quot;s2&quot;&gt;&quot;/&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;label&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;nixos-root&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+      &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;nixos&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;system&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The output will be the &lt;em&gt;/nix/store&lt;/em&gt; system closure; this is a &lt;em&gt;somewhat&lt;/em&gt; typical Linux filesystem including &lt;em&gt;/etc&lt;/em&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;comment from &lt;a href=&quot;https://github.com/Infinisil&quot;&gt;infinisil&lt;/a&gt;: &lt;em&gt;/bin&lt;/em&gt; &amp;amp; &lt;em&gt;/lib&lt;/em&gt; are purposefully left out to avoid programs depending on them; forcing purer Nix builds. They can be found nested within the &lt;em&gt;/sw&lt;/em&gt; directory.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ tree /nix/store/x0nbdy16myi7y72vy02nw8hywr3fnv7d-nixos-system-nixos-20.09pre237891.f9eba87bf03
+
+/nix/store/x0nbdy16myi7y72vy02nw8hywr3fnv7d-nixos-system-nixos-20.09pre237891.f9eba87bf03
+├── activate
+├── append-initrd-secrets -&amp;gt; /nix/store/vy8lxijna11za631r54gb9gl099qn7by-append-initrd-secrets/bin/append-initrd-secrets
+├── bin
+│   └── switch-to-configuration
+├── configuration-name
+├── etc -&amp;gt; /nix/store/cbg97bmc5jhid2hn0xxgs5ggd75xcibb-etc/etc
+├── extra-dependencies
+├── firmware -&amp;gt; /nix/store/76n4kcg49px9wqha2d9lpfsj5cccwj0h-firmware/lib/firmware
+├── init
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Cool! &lt;em&gt;nixos-rebuild&lt;/em&gt; will change &lt;em&gt;/run/current-system&lt;/em&gt; pointing to this entry afterwards.&lt;/p&gt;
+
+&lt;h3 id=&quot;vmnix&quot;&gt;vm.nix&lt;/h3&gt;
+
+&lt;p&gt;A little fun &lt;em&gt;tip&lt;/em&gt;; there is a top level attribute alongside &lt;em&gt;system&lt;/em&gt; that can make building a virtual machine very easy.&lt;/p&gt;
+
+&lt;p&gt;We simply need to change the attribute to &lt;strong&gt;nixos.vm&lt;/strong&gt;&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;nixos&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;sx&quot;&gt;nixpkgs/nixos&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;configuration&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./configuration.nix&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;nixos&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;vm&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;You can then start the &lt;strong&gt;vm&lt;/strong&gt; by running &lt;code class=&quot;highlighter-rouge&quot;&gt;./result/bin/run-nixos-vm&lt;/code&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The virtual machine setup will override the hardware configuration to setup sane defaults for QEMU&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;I tend to keep a &lt;em&gt;vm.nix&lt;/em&gt; alongside each of my machine configurations to test quickly in an isolated environment.&lt;/p&gt;
+
+&lt;p&gt;If you prefer a &lt;em&gt;nix-build&lt;/em&gt; one-liner rather the explicit file above; you can do &lt;code class=&quot;highlighter-rouge&quot;&gt;nix-build '&amp;lt;nixpkgs/nixos&amp;gt;' -A vm -I nixos-config=./configuration.nix&lt;/code&gt; which accomplishes the same thing.&lt;/p&gt;</content><author><name></name></author><summary type="html">I have been using Nix but mainly through home-manager on my Debian system; finally I made the plunge into running NixOS on an AWS server for my side-projects. There’s a lot of information on how to configure &amp;amp; setup an already created NixOS machine but not much advice for workflows, best practices &amp;amp; multiple machines. Here I’ll document what I found useful and pulling back the veil on some of the NixOS tooling. Feel free to check my Nix repository for home-manager &amp;amp; NixOS https://github.com/fzakaria/nix-home</summary></entry><entry><title type="html">mvn2nix; welcoming Maven into Nix’s warm embrace</title><link href="https://fzakaria.com/2020/09/04/mvn2nix-welcoming-maven-into-nix-s-warm-embrace.html" rel="alternate" type="text/html" title="mvn2nix; welcoming Maven into Nix's warm embrace" /><published>2020-09-04T09:09:00-07:00</published><updated>2020-09-04T09:09:00-07:00</updated><id>https://fzakaria.com/2020/09/04/mvn2nix-welcoming-maven-into-nix-s-warm-embrace</id><content type="html" xml:base="https://fzakaria.com/2020/09/04/mvn2nix-welcoming-maven-into-nix-s-warm-embrace.html">&lt;p&gt;I wrote &lt;a href=&quot;/2020/07/20/packaging-a-maven-application-with-nix.html&quot;&gt;previously&lt;/a&gt; about the current state of affairs for Java packaging in the Nix ecosystem; including a little blurb at the end about a little project I have been working on.&lt;/p&gt;
+
+&lt;p&gt;I would like to announce a &lt;em&gt;beta release&lt;/em&gt; for &lt;a href=&quot;https://github.com/fzakaria/mvn2nix&quot;&gt;mvn2nix&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;You find find the similar announcement on &lt;a href=&quot;https://discourse.nixos.org/t/mvn2nix-packaging-maven-application-made-easy/8751&quot;&gt;https://discourse.nixos.org/t/mvn2nix-packaging-maven-application-made-easy/8751&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Easily package your Maven Java application with the Nix package manager.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;strong&gt;mvn2nix&lt;/strong&gt; is my attempt &amp;amp; re-imagining of what a lock file type Nix Java ecosystem should look like.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;⚠️ &lt;strong&gt;mvn2nix&lt;/strong&gt; is seeing active development. Please pin the commit to avoid any breaking changes.&lt;/p&gt;
+
+&lt;h3 id=&quot;philosophical-goals&quot;&gt;Philosophical Goals&lt;/h3&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;is written in Java itself;&lt;/li&gt;
+  &lt;li&gt;is self-bootstrapped; it builds itself!&lt;/li&gt;
+  &lt;li&gt;very easy to understand derivations&lt;/li&gt;
+  &lt;li&gt;lots of documentation&lt;/li&gt;
+  &lt;li&gt;examples on how to produce a runnable JAR&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&quot;demo&quot;&gt;Demo&lt;/h3&gt;
+
+&lt;p&gt;You can easily run &lt;strong&gt;mvn2nix&lt;/strong&gt; using &lt;em&gt;nix run&lt;/em&gt;.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix run &lt;span class=&quot;nt&quot;&gt;-f&lt;/span&gt; https://github.com/fzakaria/mvn2nix/archive/master.tar.gz &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;--command&lt;/span&gt; mvn2nix
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Doing so on a Maven project with a &lt;em&gt;pom.xml&lt;/em&gt; will produce lock file contents.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix run &lt;span class=&quot;nt&quot;&gt;-f&lt;/span&gt; https://github.com/fzakaria/mvn2nix/archive/master.tar.gz &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;--command&lt;/span&gt; mvn2nix &lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; mvn2nix-lock.json
+
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;head &lt;/span&gt;mvn2nix-lock.json
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;s2&quot;&gt;&quot;dependencies&quot;&lt;/span&gt;: &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;s2&quot;&gt;&quot;org.junit.jupiter:junit-jupiter:jar:5.6.2&quot;&lt;/span&gt;: &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;s2&quot;&gt;&quot;layout&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;org/junit/jupiter/junit-jupiter/5.6.2/junit-jupiter-5.6.2.jar&quot;&lt;/span&gt;,
+      &lt;span class=&quot;s2&quot;&gt;&quot;sha256&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;dfc0d870dec4c5428a126ddaaa987bdaf8026cc27270929c9f26d52f3030ac61&quot;&lt;/span&gt;,
+      &lt;span class=&quot;s2&quot;&gt;&quot;url&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;https://repo.maven.apache.org/maven2/org/junit/jupiter/junit-jupiter/5.6.2/junit-jupiter-5.6.2.jar&quot;&lt;/span&gt;
+    &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;,
+    &lt;span class=&quot;s2&quot;&gt;&quot;org.codehaus.plexus:plexus-utils:pom:3.0.15&quot;&lt;/span&gt;: &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;s2&quot;&gt;&quot;layout&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;org/codehaus/plexus/plexus-utils/3.0.15/plexus-utils-3.0.15.pom&quot;&lt;/span&gt;,
+      &lt;span class=&quot;s2&quot;&gt;&quot;sha256&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;b4fe0bed469e2e973c661b4b7647db374afee7bda513560e96cd780132308f0b&quot;&lt;/span&gt;,
+      &lt;span class=&quot;s2&quot;&gt;&quot;url&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/3.0.15/plexus-utils-3.0.15.pom&quot;&lt;/span&gt;
+    &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;,
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The contents of this file are the full &lt;strong&gt;transitive&lt;/strong&gt; dependency closure for your Maven; including every dependency needed to get to the desired &lt;a href=&quot;https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html&quot;&gt;lifecycle&lt;/a&gt; (defaults to &lt;em&gt;package&lt;/em&gt;).&lt;/p&gt;
+
+&lt;p&gt;You can then use this to download all the necessary dependencies to re-run the same lifecycle with Maven offline!&lt;/p&gt;
+
+&lt;h4 id=&quot;building-a-maven-repository&quot;&gt;Building a Maven Repository&lt;/h4&gt;
+
+&lt;p&gt;&lt;strong&gt;mvn2nix&lt;/strong&gt; includes a simple derivation that creates a symlink join of every dependency found in the lock file.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;mvn2nix&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kr&quot;&gt;fetchTarball&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;https://github.com/fzakaria/mvn2nix/archive/master.tar.gz&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;mvn2nix&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;buildMavenRepositoryFromLockFile&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;file&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./mvn2nix-lock.json&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This creates a &lt;em&gt;/nix/store&lt;/em&gt; path which is a Maven repository that can be used, such as in &lt;code class=&quot;highlighter-rouge&quot;&gt;mvn package --offline -Dmaven.repo.local=${mavenRepository}&lt;/code&gt;&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ tree /nix/store/0ylsqi62jqz5gqf0dqrz5a3hj3jrzrwx-mvn2nix-repository | head
+
+/nix/store/0ylsqi62jqz5gqf0dqrz5a3hj3jrzrwx-mvn2nix-repository
+├── com
+│   └── google
+│       ├── code
+│       │   └── findbugs
+│       │       └── jsr305
+│       │           └── 3.0.2
+│       │               └── jsr305-3.0.2.jar -&amp;gt; /nix/store/w20lb1dk730v77qis8l6sjqpljwkyql7-jsr305-3.0.2.jar
+│       ├── errorprone
+│       │   └── error_prone_annotations
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;A simple derivation to invoke Maven now becomes&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;mkDerivation&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;rec&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;my-artifact&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;version&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;0.01&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;version&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;src&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;lib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;cleanSource&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;makeWrapper&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    echo &quot;Building with maven repository &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;mavenRepository&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    mvn package --offline -Dmaven.repo.local=&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;mavenRepository&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;  ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h4 id=&quot;runnable-jar&quot;&gt;Runnable JAR&lt;/h4&gt;
+
+&lt;p&gt;Executing maven is pretty simple now; but ultimately it would be great to get a runnable target.&lt;/p&gt;
+
+&lt;p&gt;If you’ve used Maven in the past you might look to re-using &lt;a href=&quot;http://maven.apache.org/plugins/maven-assembly-plugin/&quot;&gt;Maven Assembly Plugin&lt;/a&gt;, &lt;a href=&quot;https://maven.apache.org/plugins/maven-shade-plugin/&quot;&gt;Maven Shade Plugin&lt;/a&gt; or &lt;a href=&quot;https://github.com/chrisdchristo/capsule-maven-plugin&quot;&gt;Capsule Maven Plugin&lt;/a&gt;; the problem however is these solutions don’t take advantage of the fact that the dependencies are already &lt;em&gt;in the store!&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Setup your &lt;em&gt;maven-jar-plugin&lt;/em&gt; to create a manifest which expects the Maven repository layout.&lt;/p&gt;
+
+&lt;div class=&quot;language-xml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;plugin&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;artifactId&amp;gt;&lt;/span&gt;maven-jar-plugin&lt;span class=&quot;nt&quot;&gt;&amp;lt;/artifactId&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;version&amp;gt;&lt;/span&gt;3.2.0&lt;span class=&quot;nt&quot;&gt;&amp;lt;/version&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;configuration&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;archive&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;manifest&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;addClasspath&amp;gt;&lt;/span&gt;true&lt;span class=&quot;nt&quot;&gt;&amp;lt;/addClasspath&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;classpathPrefix&amp;gt;&lt;/span&gt;lib/&lt;span class=&quot;nt&quot;&gt;&amp;lt;/classpathPrefix&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;classpathLayoutType&amp;gt;&lt;/span&gt;repository&lt;span class=&quot;nt&quot;&gt;&amp;lt;/classpathLayoutType&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;mainClass&amp;gt;&lt;/span&gt;com.fzakaria.mvn2nix.Main&lt;span class=&quot;nt&quot;&gt;&amp;lt;/mainClass&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;/manifest&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;manifestEntries&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;Class-Path&amp;gt;&lt;/span&gt;.&lt;span class=&quot;nt&quot;&gt;&amp;lt;/Class-Path&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;/manifestEntries&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;/archive&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;/configuration&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/plugin&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The &lt;em&gt;installPhase&lt;/em&gt; of our derivation now merely needs to link the &lt;strong&gt;lib&lt;/strong&gt; directory to our &lt;strong&gt;mavenRepository&lt;/strong&gt; built with &lt;em&gt;mvn2nix&lt;/em&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;installPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create the bin directory&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    mkdir -p $out/bin&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create a symbolic link for the lib directory&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    ln -s &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;repository&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; $out/lib&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # copy out the JAR&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # Maven already setup the classpath to use m2 repository layout&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # with the prefix of lib/&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    cp target/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;.jar $out/&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create a wrapper that will automatically set the classpath&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # this should be the paths from the dependency derivation&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    makeWrapper &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;jdk&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/bin/java $out/bin/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; \&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;          --add-flags &quot;-jar $out/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;.jar&quot; \&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;          --set M2_HOME &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; \&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;          --set JAVA_HOME &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;jdk&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;🎆 We now have a runnable JAR! Using the dependencies from the &lt;em&gt;/nix/store&lt;/em&gt;! 🎆&lt;/p&gt;</content><author><name></name></author><summary type="html">I wrote previously about the current state of affairs for Java packaging in the Nix ecosystem; including a little blurb at the end about a little project I have been working on. I would like to announce a beta release for mvn2nix. You find find the similar announcement on https://discourse.nixos.org/t/mvn2nix-packaging-maven-application-made-easy/8751 Easily package your Maven Java application with the Nix package manager. mvn2nix is my attempt &amp;amp; re-imagining of what a lock file type Nix Java ecosystem should look like.</summary></entry><entry><title type="html">quassel core on NixOS with Let’s Encrypt</title><link href="https://fzakaria.com/2020/09/02/quassel-core-on-nixos-with-let-s-encrypt.html" rel="alternate" type="text/html" title="quassel core on NixOS with Let's Encrypt" /><published>2020-09-02T21:35:00-07:00</published><updated>2020-09-02T21:35:00-07:00</updated><id>https://fzakaria.com/2020/09/02/quassel-core-on-nixos-with-let-s-encrypt</id><content type="html" xml:base="https://fzakaria.com/2020/09/02/quassel-core-on-nixos-with-let-s-encrypt.html">&lt;p&gt;I have been wanting to take part of the NixOS community more; specifically the IRC channels. I have been heavily using the &lt;a href=&quot;https://discord.gg/RbvHtGa&quot;&gt;Discord&lt;/a&gt; server but I found many other contributors are only on the IRC network. ✊&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&quot;irc://irc.freenode.net/#nixos&quot;&gt;#nixos&lt;/a&gt;
+&lt;a href=&quot;irc://irc.freenode.net/#nix-community&quot;&gt;#nix-community&lt;/a&gt;&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;I am however an &lt;em&gt;admitted&lt;/em&gt; IRC n00b; and one of the biggest pain-points of IRC are that due to the decentralized nature of it, you don’t get to see any log messages when you are offline. &lt;em&gt;How frustrating!&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;I tried &lt;a href=&quot;https://matrix.org/&quot;&gt;https://matrix.org/&lt;/a&gt; however the IRC bridge is not really great as it will not send large messages.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;If I wasn’t enthusiastic about setting up a NixOS server I might just have used &lt;a href=&quot;https://www.irccloud.com/&quot;&gt;https://www.irccloud.com/&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;A colleague however introduced me to &lt;a href=&quot;https://quassel-irc.org/&quot;&gt;Quassel&lt;/a&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Quassel IRC is a modern, cross-platform, distributed IRC client, meaning that one (or multiple) client(s) can attach to and detach from a central core.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Great! Let’s set that up on NixOS.&lt;/p&gt;
+
+&lt;h3 id=&quot;prerequisites&quot;&gt;Prerequisites&lt;/h3&gt;
+
+&lt;p&gt;I have a &lt;em&gt;laptop&lt;/em&gt; which I will be running the &lt;em&gt;Quassel client&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;I have a NixOS &lt;em&gt;server&lt;/em&gt; which I will be running the &lt;em&gt;Quassel core server&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;I have a registered sub-domain &lt;a href=&quot;https://quassel.example.com&quot;&gt;https://quassel.example.com&lt;/a&gt; which I’ve pointed to my &lt;em&gt;server&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;requirements&quot;&gt;Requirements&lt;/h3&gt;
+
+&lt;p&gt;I would like to run Quassel with TLS using &lt;em&gt;Let’s Encrypt&lt;/em&gt;; a free TLS certificate provider.&lt;/p&gt;
+
+&lt;h3 id=&quot;nixos-setup&quot;&gt;NixOS Setup&lt;/h3&gt;
+
+&lt;h4 id=&quot;tls--acme&quot;&gt;TLS / ACME&lt;/h4&gt;
+
+&lt;p&gt;First I create a module &lt;em&gt;acme.nix&lt;/em&gt;; that will take care of fetching a TLS certificate from &lt;em&gt;Let’s Encrypt&lt;/em&gt; using the ACME protocol.&lt;/p&gt;
+
+&lt;p&gt;I’ve &lt;em&gt;heavily&lt;/em&gt; commented the below example to explain what’s going-on.&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# We will setup HTTP challenge to receive our ACME (Let's encrypt) certificate&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# https://nixos.org/manual/nixos/stable/#module-security-acme-nginx&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;security&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acceptTerms&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;security&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;email&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;acme+example@gmail.com&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;services&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nginx&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;enable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;virtualHosts&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;s2&quot;&gt;&quot;quassel.example.com&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;nv&quot;&gt;forceSSL&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;nv&quot;&gt;enableACME&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;nv&quot;&gt;locations&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;/&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;root&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/var/www&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+      &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# open the ports for HTTP &amp;amp; HTTPS&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;networking&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;firewall&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;allowedTCPPorts&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;80&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;443&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# Create a new group `acme` and set the group of the ACME daemon to run as it.&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# We also allow any user in the `acme` group to access the certificate &amp;amp; key&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;users&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;groups&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;security&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;certs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;quassel.example.com&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;allowKeysForGroup&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;security&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;certs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;quassel.example.com&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;group&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;acme&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;With the above module imported; the ACME daemon will perform the &lt;a href=&quot;https://letsencrypt.org/docs/challenge-types/#http-01-challenge&quot;&gt;HTTP challenge&lt;/a&gt; to prove ownership of the FQDN &lt;em&gt;quassel.example.com&lt;/em&gt; and receive a TLS certificate &amp;amp; key.&lt;/p&gt;
+
+&lt;h4 id=&quot;quassel-core&quot;&gt;Quassel Core&lt;/h4&gt;
+
+&lt;p&gt;Luckily there’s already a &lt;a href=&quot;https://github.com/NixOS/nixpkgs-channels/blob/nixos-unstable/nixos/modules/services/networking/quassel.nix&quot;&gt;Quassel NixOS module&lt;/a&gt; that does most of the heavy lifting.&lt;/p&gt;
+
+&lt;p&gt;I simply configure it by forcing &lt;em&gt;SSL&lt;/em&gt; and setting the certificate material to the one downloaded by the ACME daemon above.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;...&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# The quassel module will create a default user `quassel`&lt;/span&gt;
+  &lt;span class=&quot;c&quot;&gt;# Add quassel to the acme group so that it can access the certificate&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;users&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;groups&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;members&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;quassel&quot;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;services&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;quassel&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;enable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;requireSSL&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kc&quot;&gt;true&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;c&quot;&gt;# set the certificate material to that downloaded by the HTTP challenge above&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;certificateFile&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;
+      &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;security&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;acme&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;certs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;quassel.example.com&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;directory&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/full.pem&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;c&quot;&gt;# Listen on the public interface&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;interfaces&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;0.0.0.0&quot;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+  &lt;span class=&quot;c&quot;&gt;# make sure the quassel default port is open on the firewall&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;networking&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;firewall&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;allowedTCPPorts&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;4242&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;em&gt;Voila!&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Now I just need to figure out a nice view setup for my Quassel client to &lt;em&gt;look pretty&lt;/em&gt;. Hopefully you find this guide informational and it helps you also join the IRC NixOS community.&lt;/p&gt;</content><author><name></name></author><summary type="html">I have been wanting to take part of the NixOS community more; specifically the IRC channels. I have been heavily using the Discord server but I found many other contributors are only on the IRC network. ✊ #nixos #nix-community</summary></entry><entry><title type="html">nix coercion trick</title><link href="https://fzakaria.com/2020/09/02/nix-coercion-trick.html" rel="alternate" type="text/html" title="nix coercion trick" /><published>2020-09-02T14:36:00-07:00</published><updated>2020-09-02T14:36:00-07:00</updated><id>https://fzakaria.com/2020/09/02/nix-coercion-trick</id><content type="html" xml:base="https://fzakaria.com/2020/09/02/nix-coercion-trick.html">&lt;blockquote&gt;
+  &lt;p&gt;&lt;strong&gt;tl;dr;&lt;/strong&gt; If the &lt;em&gt;attrset&lt;/em&gt; contains &lt;strong&gt;outPath&lt;/strong&gt;, it can automatically be converted to a String.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The Nix expression language is &lt;em&gt;somewhat&lt;/em&gt; documented.
+I came across the following links:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;&lt;a href=&quot;https://nixos.wiki/wiki/Nix_Expression_Language&quot;&gt;https://nixos.wiki/wiki/Nix_Expression_Language&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://nixery.dev/nix-1p.html&quot;&gt;https://nixery.dev/nix-1p.html&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://nixos.org/guides/nix-pills/basics-of-language.html&quot;&gt;https://nixos.org/guides/nix-pills/basics-of-language.html&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://nixos.org/manual/nix/stable/#sec-constructs&quot;&gt;https://nixos.org/manual/nix/stable/#sec-constructs&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://medium.com/@MrJamesFisher/nix-by-example-a0063a1a4c55&quot;&gt;https://medium.com/@MrJamesFisher/nix-by-example-a0063a1a4c55&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Nix is a strongly typed language although it is lazily typed.
+The fact that it is strongly typed means that certain type coercion are
+not feasible.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-repl&amp;gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;1 + &lt;span class=&quot;s2&quot;&gt;&quot;Hello&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+error: cannot add a string to an integer, at &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;string&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;:1:2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;However while playing around with &lt;a href=&quot;https://github.com/nmattia/niv&quot;&gt;niv&lt;/a&gt;; I noticed that the attribute sets could automatically be converted to strings.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;
+nix-repl&amp;gt; sources &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; import ./nix/sources.nix
+
+nix-repl&amp;gt; :p sources.nixpkgs
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; branch &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;nixpkgs-unstable&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; description &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;Nix Packages collection&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; homepage &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; null&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; outPath &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/nix/store/shayf8qxmb7aqgzncvz1abnar7s2cssa-nixpkgs-src&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; owner &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;NixOS&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; repo &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;nixpkgs&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; rev &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;f9567594d5af2926a9d5b96ae3bada707280bec6&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; sha256 &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;0vr2di6z31c5ng73f0cxj7rj9vqvlvx3wpqdmzl0bx3yl3wr39y6&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;tarball&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; url &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;https://github.com/NixOS/nixpkgs/archive/f9567594d5af2926a9d5b96ae3bada707280bec6.tar.gz&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; url_template &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;https://github.com/&amp;lt;owner&amp;gt;/&amp;lt;repo&amp;gt;/archive/&amp;lt;rev&amp;gt;.tar.gz&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+nix-repl&amp;gt; builtins.typeOf sources.nixpkgs
+&lt;span class=&quot;s2&quot;&gt;&quot;set&quot;&lt;/span&gt;
+
+nix-repl&amp;gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;sources&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.nixpkgs&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+&lt;span class=&quot;s2&quot;&gt;&quot;/nix/store/shayf8qxmb7aqgzncvz1abnar7s2cssa-nixpkgs-src&quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;How is this possible?&lt;/p&gt;
+
+&lt;p&gt;After a very helpful &lt;a href=&quot;https://discourse.nixos.org/t/using-niv-to-version-home-manager-zsh-plugins/5060/5&quot;&gt;post&lt;/a&gt; by &lt;a href=&quot;https://github.com/danieldk&quot;&gt;danieldk&lt;/a&gt;; the answer was found!&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Please checkout https://github.com/NixOS/nix/blob/b721877b85bbf9f78fd2221d8eb540373ee1e889/src/libexpr/eval.cc#L1772 for relevant source.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;v&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tAttrs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;auto&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;maybeString&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tryAttrsToString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pos&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;v&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;context&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;coerceMore&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;copyToStore&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;maybeString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;maybeString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;auto&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;v&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;attrs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;find&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sOutPath&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;v&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;attrs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;end&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;())&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;throwTypeError&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pos&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;cannot coerce a set to a string&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;coerceToString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pos&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;context&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;coerceMore&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;copyToStore&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;If the &lt;em&gt;set&lt;/em&gt;  contains &lt;em&gt;*outPath&lt;/em&gt;; then the set can be coerced into a string!&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-repl&amp;gt; &lt;span class=&quot;nb&quot;&gt;set&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;outPath&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;Hello World&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+nix-repl&amp;gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;set&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;
+&lt;span class=&quot;s2&quot;&gt;&quot;Hello World&quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;</content><author><name></name></author><summary type="html">tl;dr; If the attrset contains outPath, it can automatically be converted to a String.</summary></entry><entry><title type="html">caching your nix-shell</title><link href="https://fzakaria.com/2020/08/11/caching-your-nix-shell.html" rel="alternate" type="text/html" title="caching your nix-shell" /><published>2020-08-11T19:12:00-07:00</published><updated>2020-08-11T19:12:00-07:00</updated><id>https://fzakaria.com/2020/08/11/caching-your-nix-shell</id><content type="html" xml:base="https://fzakaria.com/2020/08/11/caching-your-nix-shell.html">&lt;p&gt;&lt;strong&gt;tl;dr;&lt;/strong&gt; you can use the following invocation to cache  your &lt;em&gt;nix-shell&lt;/em&gt;&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; &lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--references&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--realise&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--requisites&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    cachix push your_cache
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;I have been &lt;em&gt;hooked&lt;/em&gt; on Nix as a way to introduce &lt;strong&gt;reproducible&lt;/strong&gt; development environments. However I had to introduce a &lt;em&gt;shell.nix&lt;/em&gt; file for a project that relied on a very old version of &lt;a href=&quot;https://nodejs.org/en/&quot;&gt;nodejs&lt;/a&gt;.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;Using an old-version worked – &lt;em&gt;which was great considering nix is promising hermetic packages&lt;/em&gt; – however waiting to build this particular nodejs version on every machine was a big &lt;em&gt;time sink&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;No problem! Nix offers the concept of a binary cache to avoid having to rebuild packages needlessly.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A binary cache builds Nix packages and caches the result for other machines.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;If you do a quick Google search for &lt;em&gt;“how to cache my nix-shell”&lt;/em&gt; you quickly discover &lt;a href=&quot;https://cachix.org/&quot;&gt;cachix&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The prevailing wisdom at the time, outlines the following &lt;em&gt;incantation&lt;/em&gt; to cache.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-store &lt;span class=&quot;nt&quot;&gt;-qR&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--include-outputs&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;While it’s not &lt;em&gt;technically wrong&lt;/em&gt; it’s caching &lt;strong&gt;way more&lt;/strong&gt; than you want. It is included not only the immediate &lt;em&gt;buildInputs&lt;/em&gt; of your &lt;em&gt;mkShell&lt;/em&gt; but their complete &lt;em&gt;build-time&lt;/em&gt; transitive dependencies.&lt;/p&gt;
+
+&lt;p&gt;Let’s break down a simple example!
+Here is a simple &lt;em&gt;nix-shell&lt;/em&gt; that simply pulls in &lt;em&gt;Chromium&lt;/em&gt;.&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;lib&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;mkShell&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;example-shell&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;chromium&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Let’s us run the prevailing wisdom command.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--requisites&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--include-outputs&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;wc&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt;
+
+2102
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;2102&lt;/strong&gt; store-paths that need to be uploaded!&lt;/p&gt;
+
+&lt;p&gt;The problem comes with calling &lt;em&gt;requisites&lt;/em&gt; on a derivation which is the result of &lt;em&gt;nix-instantiate&lt;/em&gt;. We cannot call &lt;strong&gt;nix-build&lt;/strong&gt; because you cannot &lt;em&gt;realise&lt;/em&gt; &lt;strong&gt;mkShell&lt;/strong&gt;!&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;–requisites
+          A source deployment is obtained by distributing the closure of
+          a store derivation.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;What do we want ? We want the immediate &lt;em&gt;build-time&lt;/em&gt; dependencies of our derivation but for each dependency, only include their &lt;em&gt;run-time&lt;/em&gt; dependencies.&lt;/p&gt;
+
+&lt;p&gt;Let’s first checkout the immediate dependencies by using &lt;em&gt;references&lt;/em&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;–references
+           Prints the set of references of the store paths paths, that is, their immediate dependencies. (For all
+           dependencies, use –requisites.)&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--references&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;
+/nix/store/9krlzvny65gdc8s7kpb6lkx8cd02c25b-default-builder.sh
+/nix/store/72kcdqdnz8myr2s28phzi48cv2a8q5x3-bash-4.4-p23.drv
+/nix/store/04jbnjp8522lv7bpwzp2jy8nihplj9kk-chromium-84.0.4147.105.drv
+/nix/store/prnb5ax5x8xapg5xmmh8w1c7zx8f0j9c-stdenv-linux.drv
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The &lt;em&gt;problem&lt;/em&gt; is that it’s returning the &lt;strong&gt;.drv&lt;/strong&gt; for chromium; if we were to call &lt;code class=&quot;highlighter-rouge&quot;&gt;--requisites&lt;/code&gt; on it; we would get the huge dependency set as earlier.&lt;/p&gt;
+
+&lt;p&gt;The &lt;em&gt;“trick”&lt;/em&gt; is to &lt;em&gt;realise&lt;/em&gt; it so we get an output-path.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--references&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--realise&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--requisites&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;wc&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt;
+
+221
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;221&lt;/strong&gt; store-paths that need to uploaded!&lt;/p&gt;
+
+&lt;p&gt;Hurray much smaller!&lt;/p&gt;
+
+&lt;p&gt;Tying it now with &lt;a href=&quot;https://cachix.org/&quot;&gt;cachix&lt;/a&gt; we get this nice one-liner.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; &lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--references&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-instantiate shell.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--realise&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    xargs nix-store &lt;span class=&quot;nt&quot;&gt;--query&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;--requisites&lt;/span&gt; | &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    cachix push your_cache
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;</content><author><name></name></author><summary type="html">tl;dr; you can use the following invocation to cache your nix-shell $ nix-store --query --references $(nix-instantiate shell.nix) | \ xargs nix-store --realise | \ xargs nix-store --query --requisites | \ cachix push your_cache I have been hooked on Nix as a way to introduce reproducible development environments. However I had to introduce a shell.nix file for a project that relied on a very old version of nodejs.</summary></entry><entry><title type="html">Packaging a Maven application with Nix</title><link href="https://fzakaria.com/2020/07/20/packaging-a-maven-application-with-nix.html" rel="alternate" type="text/html" title="Packaging a Maven application with Nix" /><published>2020-07-20T14:26:00-07:00</published><updated>2020-07-20T14:26:00-07:00</updated><id>https://fzakaria.com/2020/07/20/packaging-a-maven-application-with-nix</id><content type="html" xml:base="https://fzakaria.com/2020/07/20/packaging-a-maven-application-with-nix.html">&lt;p&gt;Surprisingly for Java’s popularity, the Nix Java ecosystem is pretty immature &amp;amp; fragmented. There are several community driven solutions for integrating Maven (Java’s package manager) with Nix all which have their own &lt;em&gt;pitfalls&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;This post will go through a &lt;em&gt;single idiom&lt;/em&gt; on how to package a Maven project in Nix that at the very least does not rely on 3rd party support: &lt;strong&gt;Double invoking Maven&lt;/strong&gt;&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;The main &lt;em&gt;crux&lt;/em&gt; of packaging a Maven application in a Nix derivation is that the derivation is restricted from performing any network access. The builder is also in a &lt;em&gt;chroot&lt;/em&gt; directory without access to the local Maven repository &lt;em&gt;~/.m2&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;How can we hydrate the local Maven repository within a Nix derivation?&lt;/p&gt;
+
+&lt;p&gt;Using &lt;strong&gt;Fixed output derivations&lt;/strong&gt;!&lt;/p&gt;
+
+&lt;h2 id=&quot;fixed-output-derivation&quot;&gt;Fixed Output Derivation&lt;/h2&gt;
+
+&lt;p&gt;Fixed output derivations (FOD) are derivations that specify the hash of the output contents (Nix typically calculates the hash of the input). These derivations are allowed to perform network access in sandboxed mode.&lt;/p&gt;
+
+&lt;p&gt;Here is a very simple &lt;em&gt;fixed output derivation&lt;/em&gt; to demonstrate.&lt;/p&gt;
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{}&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;runCommand&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;fetching-with-curl&quot;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;outputHash&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;01c7d3wsq6g4s6k2vl95z2gix8q9spk86knwmgvkfijp04jq00z0&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;outputHashAlgo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;sha256&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;curl&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;SSL_CERT_FILE&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;cacert&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/etc/ssl/certs/ca-bundle.crt&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;  curl https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-interpolation/1.25/plexus-interpolation-1.25.jar --output $out&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;If &lt;strong&gt;outputHash&lt;/strong&gt; was not provided; the &lt;em&gt;cURL&lt;/em&gt; command would fail to establish a connection.&lt;/p&gt;
+
+&lt;h2 id=&quot;maven-repository-as-a-fixed-output-derivation&quot;&gt;Maven Repository as a Fixed Output Derivation&lt;/h2&gt;
+
+&lt;p&gt;Armed with the knowledge, a Fixed Output Derivation can make network calls, we can construct a derivation that will download all necessary dependencies.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;mkDerivation&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;maven-dependencies&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;src&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;buildPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;      while mvn package -Dmaven.repo.local=$out/.m2 -Dmaven.wagon.rto=5000; [ $? = 1 ]; do&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;        echo &quot;timeout, restart maven to continue downloading&quot;&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;      done&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;c&quot;&gt;# keep only *.{pom,jar,sha1,nbm} and delete all ephemeral files with lastModified timestamps inside&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;installPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;        find $out/.m2 -type f -regex '.+\\(\\.lastUpdated\\|resolver-status\\.properties\\|_remote\\.repositories\\)' -delete&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;outputHashAlgo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;sha256&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;outputHashMode&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;recursive&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;outputHash&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;026wmcpbdvkm7xizxgg0c12z4sl88n2h7bdwvvk6r7y5b6q18nsf&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The key insight here is &lt;code class=&quot;highlighter-rouge&quot;&gt;-Dmaven.repo.local=$out/.m2&lt;/code&gt;; which will cause the execution of &lt;em&gt;maven&lt;/em&gt; to download all the necessary dependencies into a maven repository rooted within the derivation’s output directory.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Some additional files are deleted that would cause the output hash to change potentially on subsequent runs.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;If your package uses &lt;strong&gt;SNAPSHOT&lt;/strong&gt; dependencies; there is a string likelihood that over-time your output hash will change.&lt;/p&gt;
+
+&lt;p&gt;We now have an entry in our &lt;em&gt;/nix/store&lt;/em&gt; that is a Maven repository of all the necessary dependencies our application needs.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;/nix/store/bxhr4p2x99jvqk027jsv250b861wklsq-dependencies/.m2
+├── backport-util-concurrent
+│   └── backport-util-concurrent
+│       └── 3.1
+│           ├── backport-util-concurrent-3.1.pom
+│           ├── backport-util-concurrent-3.1.pom.sha1
+│           └── _remote.repositories
+├── classworlds
+│   └── classworlds
+│       ├── 1.1
+│       │   ├── classworlds-1.1.jar
+│       │   ├── classworlds-1.1.jar.sha1
+│       │   ├── classworlds-1.1.pom
+│       │   ├── classworlds-1.1.pom.sha1
+│       │   └── _remote.repositories
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;building-the-java-application&quot;&gt;Building the Java Application&lt;/h2&gt;
+
+&lt;p&gt;With a derivation setup to contain our full Maven repository, we are ready to build the Maven application.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;makeWrapper&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;dependencies&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# see above&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;mkDerivation&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;rec&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;maven-application&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;kn&quot;&gt;inherit&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;version&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;version&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;src&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;maven&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;makeWrapper&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # 'maven.repo.local' must be writable so copy it out of nix store&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    mvn package --offline -Dmaven.repo.local=&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;dependencies&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/.m2&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;  ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;installPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create the bin directory&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    mkdir -p $out/bin&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create a symbolic link for the lib directory&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    ln -s &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;dependencies&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/.m2 $out/lib&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # copy out the JAR&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # Maven already setup the classpath to use m2 repository layout&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # with the prefix of lib/&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    cp target/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;.jar $out/&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # create a wrapper that will automatically set the classpath&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    # this should be the paths from the dependency derivation&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    makeWrapper &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;jdk11_headless&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;/bin/java $out/bin/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;pname&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; \&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;          --add-flags &quot;-jar $out/&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;${&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;}&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;.jar&quot;&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;  ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This derivation builds the Maven application while instructing Maven to be in “offline” mode (do not try to contact the remote repositories) and we set the local repository to the output of the previous derivation.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;mvn package --offline -Dmaven.repo.local=${dependencies}/.m2
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The &lt;em&gt;makeWrapper&lt;/em&gt; portion should be straightforward as we are simply offering a simple executable to launch our application.&lt;/p&gt;
+
+&lt;p&gt;Another key insight is the symbolic link within our derivation’s output to the Maven repository.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ln -s ${dependencies}/.m2 $out/lib
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The main JAR must be instructed to search this directory as part of the ClassPath. Luckily, Maven offers a plugin to easily configure this.&lt;/p&gt;
+
+&lt;div class=&quot;language-xml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;plugin&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;artifactId&amp;gt;&lt;/span&gt;maven-jar-plugin&lt;span class=&quot;nt&quot;&gt;&amp;lt;/artifactId&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;version&amp;gt;&lt;/span&gt;3.2.0&lt;span class=&quot;nt&quot;&gt;&amp;lt;/version&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;configuration&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;archive&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;manifest&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;addClasspath&amp;gt;&lt;/span&gt;true&lt;span class=&quot;nt&quot;&gt;&amp;lt;/addClasspath&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;classpathPrefix&amp;gt;&lt;/span&gt;lib/&lt;span class=&quot;nt&quot;&gt;&amp;lt;/classpathPrefix&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;classpathLayoutType&amp;gt;&lt;/span&gt;repository&lt;span class=&quot;nt&quot;&gt;&amp;lt;/classpathLayoutType&amp;gt;&lt;/span&gt;
+                &lt;span class=&quot;nt&quot;&gt;&amp;lt;mainClass&amp;gt;&lt;/span&gt;com.example.Main&lt;span class=&quot;nt&quot;&gt;&amp;lt;/mainClass&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;/manifest&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;/archive&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;/configuration&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/plugin&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;As the JAR is located in &lt;strong&gt;$out&lt;/strong&gt;, we’ve augmented the ClassPath to search for all dependencies within the &lt;strong&gt;lib/&lt;/strong&gt; directory assuming a Maven repository layout.&lt;/p&gt;
+
+&lt;p&gt;Here is an example of the &lt;strong&gt;META-INF/MANIFEST.MF&lt;/strong&gt; that may be generated
+(assuming the output JAR is &lt;em&gt;application-01.jar&lt;/em&gt;):&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ unzip -q -c  result/application-0.1.jar META-INF/MANIFEST.MF
+
+Manifest-Version: 1.0
+Created-By: Maven Jar Plugin 3.2.0
+Build-Jdk-Spec: 11
+Class-Path: . lib/org/slf4j/slf4j-api/1.7.30/slf4j-api-1.7.30.jar lib/or
+ g/slf4j/slf4j-simple/1.7.30/slf4j-simple-1.7.30.jar lib/com/google/guav
+ a/guava/29.0-jre/guava-29.0-jre.jar lib/com/google/guava/failureaccess/
+ 1.0.1/failureaccess-1.0.1.jar lib/com/google/guava/listenablefuture/999
+ 9.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to
+ -avoid-conflict-with-guava.jar lib/com/google/code/findbugs/jsr305/3.0.
+ 2/jsr305-3.0.2.jar lib/org/checkerframework/checker-qual/2.11.1/checker
+ -qual-2.11.1.jar lib/com/google/errorprone/error_prone_annotations/2.3.
+ 4/error_prone_annotations-2.3.4.jar lib/com/google/j2objc/j2objc-annota
+ tions/1.3/j2objc-annotations-1.3.jar
+Main-Class: com.example.Main
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Congratulations you’ve just packaged your Maven application with Nix!&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This “double invocation” solution works pretty well but has one major drawback.&lt;/p&gt;
+
+&lt;p&gt;Due to the &lt;em&gt;coarseness&lt;/em&gt; of having all dependencies in a single output derivation, Nix cannot make use of sharing dependencies across derivations within the &lt;em&gt;/nix/store&lt;/em&gt;. The solution however is pretty simplistic minus the cost-efficiency due to the wasted space.&lt;/p&gt;
+
+&lt;p&gt;I hope that little deep dive into how to build a Maven application through Nix was informative.&lt;/p&gt;
+
+&lt;h2 id=&quot;mvn2nix&quot;&gt;mvn2nix&lt;/h2&gt;
+
+&lt;p&gt;As mentioned in the top of this post, there are a variety of tools already for integrating Maven with Nix better:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/obsidiansystems/haven&quot;&gt;haven&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/nix-community/mavenix&quot;&gt;mavenix&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/NixOS/mvn2nix-maven-plugin&quot;&gt;mvn2nix-maven-plugin&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Each &lt;em&gt;somewhat work&lt;/em&gt; but have odd limitations of trying to work around Maven’s clunky API. The problem though is Maven’s dependency resolution is complex and rationalizing it from the outside is &lt;em&gt;error-prone&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;mvn2nix-maven-plugin&lt;/strong&gt; seems like it has the best &lt;em&gt;shot&lt;/em&gt; with included support within &lt;a href=&quot;https://github.com/NixOS/nixpkgs&quot;&gt;nixpkgs&lt;/a&gt; through &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/build-maven.nix&quot;&gt;buildMaven&lt;/a&gt; build support but it’s slow &amp;amp; has limited support for different repositories.&lt;/p&gt;
+
+&lt;p&gt;I started work on a separate binary &lt;a href=&quot;https://github.com/fzakaria/mvn2nix/settings&quot;&gt;mvn2nix&lt;/a&gt;; and seeking collaborators.&lt;/p&gt;
+
+&lt;p&gt;The goal is a minimal binary that duplicates Maven’s dependency resolution through the exposed APIs to generate a Nix expression for use with &lt;em&gt;fetchUrl&lt;/em&gt;.&lt;/p&gt;</content><author><name></name></author><summary type="html">Surprisingly for Java’s popularity, the Nix Java ecosystem is pretty immature &amp;amp; fragmented. There are several community driven solutions for integrating Maven (Java’s package manager) with Nix all which have their own pitfalls. This post will go through a single idiom on how to package a Maven project in Nix that at the very least does not rely on 3rd party support: Double invoking Maven</summary></entry><entry><title type="html">what is bundlerEnv doing?</title><link href="https://fzakaria.com/2020/07/18/what-is-bundlerenv-doing.html" rel="alternate" type="text/html" title="what is bundlerEnv doing?" /><published>2020-07-18T22:41:00-07:00</published><updated>2020-07-18T22:41:00-07:00</updated><id>https://fzakaria.com/2020/07/18/what-is-bundlerenv-doing</id><content type="html" xml:base="https://fzakaria.com/2020/07/18/what-is-bundlerenv-doing.html">&lt;p&gt;The &lt;a href=&quot;https://nixos.wiki/&quot;&gt;Nix wiki&lt;/a&gt; is &lt;em&gt;pretty great&lt;/em&gt; for a lot of technical content however it sometimes fails to gently walk users through how something works.&lt;/p&gt;
+
+&lt;p&gt;I’ve been doing some Ruby work as part of my day-to-day job and wanted to better understand Nix’s approach to Ruby.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;p&gt;If you Google “Nix Ruby”, you’ll inevitably find the &lt;a href=&quot;https://nixos.wiki/wiki/Packaging/Ruby&quot;&gt;Packaging/Ruby&lt;/a&gt; Nix wiki page.&lt;/p&gt;
+
+&lt;p&gt;The page walks the reader quickly through some &lt;em&gt;Nix incantations&lt;/em&gt;, including calling a utility &lt;em&gt;bundix&lt;/em&gt; without much explanation. I hope the remaining portion of this post serves as a better guide &amp;amp; deeper understanding of what’s happening.&lt;/p&gt;
+
+&lt;h2 id=&quot;setup&quot;&gt;Setup&lt;/h2&gt;
+
+&lt;p&gt;First let’s setup the most simple bundler project, using only a single gem: &lt;a href=&quot;https://rubygems.org/gems/hello-world/versions/1.2.0&quot;&gt;hello-world&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Let’s initialize our directory to create the &lt;em&gt;Gemfile&lt;/em&gt; &amp;amp; add our &lt;em&gt;hello-world&lt;/em&gt; dependency.&lt;/p&gt;
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;bundle init
+bundle add hello-world
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Create an extremely &lt;em&gt;minimal&lt;/em&gt; Ruby script &lt;strong&gt;main.rb&lt;/strong&gt;.&lt;/p&gt;
+&lt;div class=&quot;language-ruby highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nb&quot;&gt;require&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'rubygems'&lt;/span&gt;
+&lt;span class=&quot;nb&quot;&gt;require&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'bundler/setup'&lt;/span&gt;
+
+&lt;span class=&quot;nb&quot;&gt;require&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'hello-world'&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Finally let’s run the utility &lt;a href=&quot;https://github.com/nix-community/bundix&quot;&gt;bundix&lt;/a&gt;; with more explanation to follow. You may not have &lt;em&gt;bundix&lt;/em&gt; in your current environment, I found it useful just to run it directly from the &lt;em&gt;nix-shell&lt;/em&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-shell &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; bundix &lt;span class=&quot;nt&quot;&gt;--run&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'bundix -l'&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;Bundix’s&lt;/strong&gt; role is very simple. It traverses your &lt;em&gt;Gemfile.lock&lt;/em&gt;, and generates a file &lt;em&gt;gemset.nix&lt;/em&gt; to be consumed by the subsequent Nix Ruby functions.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;&lt;em&gt;gemset.nix&lt;/em&gt; should be seen simply as the Nix transformation of the _Gemfile.lock_in the Nix language.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;hello-world&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;groups&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;default&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;platforms&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[];&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;source&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;nv&quot;&gt;remotes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;https://rubygems.org&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+      &lt;span class=&quot;nv&quot;&gt;sha256&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;141r6pafbwjf8aczsilxxhdrdbbmdhimgbsq8m9qsvjm522ln15p&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+      &lt;span class=&quot;nv&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;gem&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;version&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;1.2.0&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;With all that &lt;em&gt;fanfare&lt;/em&gt; out of the way, time to write the  &lt;em&gt;shell.nix&lt;/em&gt; file.
+Below is an extremely minimal &lt;em&gt;shell.nix&lt;/em&gt; to get started.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;app&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;bundlerEnv&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;my-app&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;ruby&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;ruby&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;gemdir&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;sx&quot;&gt;./.&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;mkShell&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;bundler-shell&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;buildInputs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;app&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;bundix&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;ruby&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;You can change the assignment of Ruby to any version you want.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;At this point, things worked. Great! However I was pretty confused as to what was going on. Let’s dig in!&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;bundlerEnv&lt;/strong&gt; is defined in &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/ruby-modules/bundled-common/default.nix&quot;&gt;ruby-modules/bundled-common/default.nix&lt;/a&gt; in &lt;a href=&quot;https://github.com/NixOS/nixpkgs&quot;&gt;nixpkgs&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;One of the first thing the derivation does, is call a function to determine the &lt;em&gt;3&lt;/em&gt; important files: &lt;em&gt;Gemfile&lt;/em&gt;, &lt;em&gt;Gemfile.lock&lt;/em&gt; &amp;amp; &lt;em&gt;gemset.nix&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;Our example above didn’t mention anything of the sort, so by &lt;a href=&quot;https://github.com/NixOS/nixpkgs/blob/98c9ae41de70a724517f64c0a39d4c5f68373a7c/pkgs/development/ruby-modules/bundled-common/functions.nix#L17-L27&quot;&gt;default&lt;/a&gt;, it will find them according to the &lt;em&gt;gemdir&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;gemsetnix&quot;&gt;gemset.nix&lt;/h3&gt;
+
+&lt;p&gt;The &lt;em&gt;gemset.nix&lt;/em&gt; file is used to create &lt;em&gt;derivations&lt;/em&gt; for each gem referenced by downloading the source files into the &lt;em&gt;/nix/store&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;bundleenv&quot;&gt;bundleEnv&lt;/h3&gt;
+
+&lt;p&gt;With all the gems downloaded, a &lt;em&gt;buildEnv&lt;/em&gt; (symlink of multiple derivations) is created.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;/nix/store/ygzpgzxm25j6lfyad3zxr6rm2psahjlz-fzakaria.com/
+|-- bin
+|   |-- bundle
+|   |-- bundler
+|   &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; hello-world
+&lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; lib
+    &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; ruby
+        &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; gems
+            &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; 2.6.0
+                |-- bin
+                |   |-- bundle -&amp;gt; /nix/store/niy7ivnph74z02kf8cvh9c4kz0i70nqp-bundler-2.1.4/lib/ruby/gems/2.6.0/bin/bundle
+                |   |-- bundler -&amp;gt; /nix/store/niy7ivnph74z02kf8cvh9c4kz0i70nqp-bundler-2.1.4/lib/ruby/gems/2.6.0/bin/bundler
+                |   &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; hello-world -&amp;gt; /nix/store/hym2fy3yiy706rm5hmwg6gmyrg8zipqm-ruby2.6.6-hello-world-1.2.0/lib/ruby/gems/2.6.0/bin/hello-world
+                |-- build_info
+                |-- doc
+                |-- extensions
+                |-- gems
+                |   |-- bundler-2.1.4 -&amp;gt; /nix/store/niy7ivnph74z02kf8cvh9c4kz0i70nqp-bundler-2.1.4/lib/ruby/gems/2.6.0/gems/bundler-2.1.4
+                |   &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; hello-world-1.2.0 -&amp;gt; /nix/store/hym2fy3yiy706rm5hmwg6gmyrg8zipqm-ruby2.6.6-hello-world-1.2.0/lib/ruby/gems/2.6.0/gems/hello-world-1.2.0
+                &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; specifications
+                    |-- bundler-2.1.4.gemspec -&amp;gt; /nix/store/niy7ivnph74z02kf8cvh9c4kz0i70nqp-bundler-2.1.4/lib/ruby/gems/2.6.0/specifications/bundler-2.1.4.gemspec
+                    &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;--&lt;/span&gt; hello-world-1.2.0.gemspec -&amp;gt; /nix/store/hym2fy3yiy706rm5hmwg6gmyrg8zipqm-ruby2.6.6-hello-world-1.2.0/lib/ruby/gems/2.6.0/specifications/hello-world-1.2.0.gemspec
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The &lt;strong&gt;gems&lt;/strong&gt; directory, has the symlinks to every gem declared in the Gemfile through the &lt;em&gt;gemset.nix&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;Finally a custom &lt;em&gt;bundler&lt;/em&gt; script is provided which makes sure to setup the correct &lt;em&gt;GEM_HOME&lt;/em&gt; and &lt;em&gt;Gemfile&lt;/em&gt; path.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;#!/nix/store/arz0swkk693spw100q9d472816krr6x6-ruby-2.6.6/bin/ruby&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# This file was generated by Nix.&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# The application 'bundler' is installed as part of a gem, and&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# this file is here to facilitate running it.&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;#&lt;/span&gt;
+
+&lt;span class=&quot;no&quot;&gt;ENV&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;BUNDLE_GEMFILE&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/nix/store/czr32qd8zl96yzcpmdjik8malfnzfhdp-gemfile-and-lockfile/Gemfile&quot;&lt;/span&gt;
+&lt;span class=&quot;no&quot;&gt;ENV&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;delete&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'BUNDLE_PATH'&lt;/span&gt;
+&lt;span class=&quot;no&quot;&gt;ENV&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'BUNDLE_FROZEN'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1'&lt;/span&gt;
+
+&lt;span class=&quot;no&quot;&gt;Gem&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;paths&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'GEM_HOME'&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/nix/store/ygzpgzxm25j6lfyad3zxr6rm2psahjlz-fzakaria.com/lib/ruby/gems/2.6.0&quot;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;vg&quot;&gt;$LOAD_PATH&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;unshift&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;/nix/store/niy7ivnph74z02kf8cvh9c4kz0i70nqp-bundler-2.1.4/lib/ruby/gems/2.6.0/gems/bundler-2.1.4/lib&quot;&lt;/span&gt;
+
+&lt;span class=&quot;nb&quot;&gt;require&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'bundler'&lt;/span&gt;
+&lt;span class=&quot;no&quot;&gt;Bundler&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;setup&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+
+&lt;span class=&quot;nb&quot;&gt;load&lt;/span&gt; &lt;span class=&quot;no&quot;&gt;Gem&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;bin_path&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;bundler&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;bundler&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Voila! You can run the Ruby application.&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-shell &lt;span class=&quot;nt&quot;&gt;--pure&lt;/span&gt;
+
+bundle &lt;span class=&quot;nb&quot;&gt;exec &lt;/span&gt;ruby main.rb
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; hello world!
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; this is hello world library
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;</content><author><name></name></author><summary type="html">The Nix wiki is pretty great for a lot of technical content however it sometimes fails to gently walk users through how something works. I’ve been doing some Ruby work as part of my day-to-day job and wanted to better understand Nix’s approach to Ruby.</summary></entry><entry><title type="html">setting up a Nix S3 binary cache</title><link href="https://fzakaria.com/2020/07/15/setting-up-a-nix-s3-binary-cache.html" rel="alternate" type="text/html" title="setting up a Nix S3 binary cache" /><published>2020-07-15T21:13:00-07:00</published><updated>2020-07-15T21:13:00-07:00</updated><id>https://fzakaria.com/2020/07/15/setting-up-a-nix-s3-binary-cache</id><content type="html" xml:base="https://fzakaria.com/2020/07/15/setting-up-a-nix-s3-binary-cache.html">&lt;blockquote&gt;
+  &lt;p&gt;If you just want a very easy-to-use binary cache, consider using &lt;a href=&quot;https://cachix.org/&quot;&gt;cachix&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;&lt;a href=&quot;https://nixos.org/&quot;&gt;Nix&lt;/a&gt; is an amazing tool, however the learning curve can be &lt;del&gt;very&lt;/del&gt; high. The online wiki has a lot of great documentation however I find it is often very geared towards NixOS specifically.&lt;/p&gt;
+
+&lt;p&gt;I wanted to better understand how to setup my own &lt;strong&gt;binary cache&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;!--more--&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;A binary cache builds Nix packages and caches the result for other machines. Any machine with Nix installed can be a binary cache for another one, no matter the operating system.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;As mentioned above, there are a few solutions already offered in Nix:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;cache.nixos.org: The default binary cache included with all Nix installations&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://cachix.org/&quot;&gt;cachix&lt;/a&gt;: A &lt;em&gt;sass&lt;/em&gt; product that has a great free tier as long as your caches are public.&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/edolstra/nix-serve&quot;&gt;nix-serve&lt;/a&gt;: A &lt;em&gt;perl&lt;/em&gt; standalone HTTP binary cache implementation.&lt;/li&gt;
+  &lt;li&gt;Any machine can be used as a cache through SSH protocol&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;I specifically wanted to document &amp;amp; explore Nix support for binary caching using &lt;a href=&quot;https://aws.amazon.com/s3/&quot;&gt;AWS S3&lt;/a&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;The following guide assumes you have an AWS account &amp;amp; have setup CLI credentials .&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&quot;our-custom-derivation&quot;&gt;Our custom derivation&lt;/h3&gt;
+
+&lt;p&gt;In order to test our new cache; we’ll create a derivation that is &lt;strong&gt;definitely&lt;/strong&gt; not on &lt;a href=&quot;https://github.com/NixOS/nixpkgs&quot;&gt;nixpkgs&lt;/a&gt;; especially the default cache service.&lt;/p&gt;
+
+&lt;p&gt;Let’s create a &lt;em&gt;slightly&lt;/em&gt; modified version of the &lt;a href=&quot;https://www.gnu.org/software/hello/&quot;&gt;GNU hello&lt;/a&gt; program.&lt;/p&gt;
+
+&lt;p&gt;Let’s save the below derivation in a file &lt;em&gt;lolhello.nix&lt;/em&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-nix highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;nixpkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;},&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;fetchurl&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;pkgs&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;fetchurl&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}:&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;stdenv&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;mkDerivation&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;lolhello&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;src&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;fetchurl&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;url&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;mirror://gnu/hello/hello-2.3.tar.bz2&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;sha256&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;0c7vijq8y68bpr7g6dh1gny0bff8qq81vnp4ch8pjzvg56wb3js1&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+
+  &lt;span class=&quot;nv&quot;&gt;patchPhase&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;    sed -i 's/Hello, world!/hello, Nix!/g' src/hello.c&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;  ''&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;This guide isn’t meant to cover on how to write derivations, however hopefully this one is simple enough to follow along.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Since Nix is &lt;strong&gt;reproducible&lt;/strong&gt;, the &lt;em&gt;/nix/store&lt;/em&gt; path for the output of this derivation will always be &lt;strong&gt;/nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;h3 id=&quot;create-a-bucket&quot;&gt;Create a bucket&lt;/h3&gt;
+
+&lt;p&gt;Le’s create a bucket at the moment to act as the root of our &lt;em&gt;/nix/store&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;I chose &lt;em&gt;s3://fmzakari-nixcache&lt;/em&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;generate-binary-cache-key&quot;&gt;Generate Binary Cache Key&lt;/h2&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-store &lt;span class=&quot;nt&quot;&gt;--generate-binary-cache-key&lt;/span&gt; fmzakari-nixcache &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+ cache-priv-key.pem cache-pub-key.pem
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;We will be utilizing Nix’s ability to validate that the contents of cached paths in the store through a cryptographic signature.&lt;/p&gt;
+
+&lt;h2 id=&quot;build--sign&quot;&gt;Build &amp;amp; Sign&lt;/h2&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c&quot;&gt;# build it locally so it's present in /nix/store&lt;/span&gt;
+nix-build &lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; lolhello.nix
+&lt;span class=&quot;c&quot;&gt;# sign the /nix/store path&lt;/span&gt;
+nix sign-paths &lt;span class=&quot;nt&quot;&gt;--key-file&lt;/span&gt; cache-priv-key.pem &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+    &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-build &lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; lolhello.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code class=&quot;highlighter-rouge&quot;&gt;$(nix-build --no-out-link lolhello.nix)&lt;/code&gt; is just a quick way to return the &lt;em&gt;nix/store/&lt;/em&gt; output path &lt;em&gt;/nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;upload&quot;&gt;Upload&lt;/h2&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c&quot;&gt;# upload the contents to your S3&lt;/span&gt;
+nix copy &lt;span class=&quot;nt&quot;&gt;--to&lt;/span&gt; s3://fmzakari-nixcache &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-build &lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; lolhello.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;purge-the-local-store&quot;&gt;Purge the local store&lt;/h2&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c&quot;&gt;# This deletes the /nix/store paths &amp;amp; the database entries&lt;/span&gt;
+nix-store &lt;span class=&quot;nt&quot;&gt;--delete&lt;/span&gt; &lt;span class=&quot;si&quot;&gt;$(&lt;/span&gt;nix-build &lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; lolhello.nix&lt;span class=&quot;si&quot;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h2 id=&quot;build-from-the-cache&quot;&gt;Build (from the cache!)&lt;/h2&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;nix-build &lt;span class=&quot;nt&quot;&gt;--no-out-link&lt;/span&gt; lolhello.nix
+these paths will be fetched &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;0.03 MiB download, 0.18 MiB unpacked&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;:
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;   /nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; copying path &lt;span class=&quot;s1&quot;&gt;'/nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello'&lt;/span&gt; from &lt;span class=&quot;s1&quot;&gt;'s3://fmzakari-nixcache'&lt;/span&gt;...
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; /nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello
+
+&lt;span class=&quot;c&quot;&gt;# run the modified hello after it was pulled from the cache&lt;/span&gt;
+/nix/store/95hmzgcfq0499l4ln72p3b4wv4smp9qw-lolhello
+&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; hello, Nix!
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;If you wanted to avoid having to add the &lt;code class=&quot;highlighter-rouge&quot;&gt;--option&lt;/code&gt; for &lt;em&gt;nix-store&lt;/em&gt; or even have the caching work with &lt;em&gt;nix-build&lt;/em&gt;, the &lt;strong&gt;~/.config/nix/nix.conf&lt;/strong&gt; file will have to updated.&lt;/p&gt;
+
+&lt;p&gt;Here are the contents for the same s3 cache used above however placed within the &lt;em&gt;nix.conf&lt;/em&gt;.&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;substituters = https://cache.nixos.org https://looker.cachix.org s3://fmzakari-nixcache
+
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= looker.cachix.org-1:9iVdEFDyfK4uFDz54S51bBuTPCSKly1PmY/tScSbja0=
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;There doesn’t seem to be a simple programmatic way to update &lt;em&gt;nix.conf&lt;/em&gt;; so you’ll have to hand edit or sed :)&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Using S3 was surprising a pretty straightforward way to achieve a personal binary cache; although distributing the public keys are a bit of a hassle.&lt;/p&gt;
+
+&lt;p&gt;Biggest pain points though seem to be:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Not a simple way to programmatically update the &lt;strong&gt;nix.conf&lt;/strong&gt; file for the new binary caches.&lt;/li&gt;
+  &lt;li&gt;Somewhat scary if you’d like to have multiple contributors to your new binary cache by sharing the single private key.&lt;/li&gt;
+&lt;/ol&gt;</content><author><name></name></author><summary type="html">If you just want a very easy-to-use binary cache, consider using cachix. Nix is an amazing tool, however the learning curve can be very high. The online wiki has a lot of great documentation however I find it is often very geared towards NixOS specifically. I wanted to better understand how to setup my own binary cache.</summary></entry></feed>
